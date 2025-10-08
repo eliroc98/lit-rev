@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "lit-rev"
+version = "0.1.0"
+description = "A tool to collect papers from various web archives."
+authors = ["eliroc98 <elisabetta.rocchetti0@gmail.com>"]
+readme = "README.md"
+packages = [{include = "litrev"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.11.0 || >3.11.0,<3.14"
+openreview-py = "^1.52.5"
+arxiv = "^2.2.0"
+requests = "^2.32.5"
+pydantic = "^2.0"
+typer = {version = ">=0.12.3", extras = ["all"]}
+acl-anthology = "^0.5.3"
+scholarly = {extras = ["tor"], version = "^1.7.11"}
+free-proxy = "^1.1.3"
+tqdm = "^4.67.1"
+streamlit = "^1.50.0"
+pandas = "^2.3.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+ruff = "^0.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+litrev = "litrev.main:app"
