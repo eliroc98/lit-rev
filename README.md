@@ -1,4 +1,4 @@
-# 📚 LitRev Engine
+# 📚 LitRev
 
 [![Python Version][python-badge]][python-link]
 [![License: MIT][license-badge]][license-link]
@@ -39,8 +39,8 @@ A powerful, unified search tool for academic literature reviews. Query multiple 
 First, clone the repository and navigate into the project directory:
 
 ```bash
-git clone https://github.com/your-username/lit-rev-engine.git
-cd lit-rev-engine
+git clone https://github.com/your-username/lit-rev.git
+cd lit-rev
 ```
 
 Next, install the required dependencies using Poetry:
@@ -139,8 +139,8 @@ poetry run lit-rev search -i "reinforcement learning" -m "Computer Science"
 The project is organized into a `lit_rev` package with a clear separation of concerns.
 
 ```
-lit-rev-engine/
-├── lit_rev/
+lit-rev/
+├── litrev/
 │   ├── __init__.py
 │   ├── search/               # Each archive has its own search module
 │   │   ├── acl_search.py
@@ -150,7 +150,6 @@ lit-rev-engine/
 │   ├── main.py               # Typer CLI application (search, interactive)
 │   ├── models.py             # Pydantic data models (SearchConfig, Paper)
 │   └── utils.py              # Helper functions (logging, decorators)
-├── tests/                    # Unit and integration tests
 ├── .gitignore
 ├── app.py                    # The Streamlit web application entry point
 ├── pyproject.toml            # Poetry configuration and dependencies
@@ -164,7 +163,5 @@ This project is licensed under the GNU GPLv3 License. See the [LICENSE](LICENSE)
 
 [python-badge]: https://img.shields.io/badge/Python-3.10%2B-blue.svg
 [python-link]: https://www.python.org/downloads/
-[license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
-[license-link]: https://opensource.org/licenses/MIT
-[ruff-badge]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
-[ruff-link]: https://github.com/astral-sh/ruff
+[license-badge]: https://img.shields.io/badge/GNU-v3
+[license-link]: https://opensource.org/licenses/gpl-3-0
