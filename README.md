@@ -65,16 +65,11 @@ poetry install
 
 For full functionality and reliability, API keys for Scopus and SerpApi are required. The application uses a `.env` file to manage these secrets.
 
-1.  **Create a `.env` file**: Copy the example file to create your local environment file.
-    ```bash
-    cp .env.example .env
-    ```
-
-2.  **Get Your Keys**:
+1.  **Get Your Keys**:
     -   **Scopus**: Go to the [Elsevier Developer Portal](https://dev.elsevier.com/), create an account, and get an API key.
     -   **SerpApi**: Go to [SerpApi.com](https://serpapi.com/), sign up for an account (a free plan is available), and get your API key. This is used for reliable Google Scholar scraping.
 
-3.  **Edit the `.env` file**: Open the `.env` file you just created and paste your keys into the appropriate fields.
+2.  **Create and Edit the `.env` file**: Create and open the `.env` file and paste your keys into the appropriate fields.
 
     ```ini
     # .env
@@ -87,7 +82,7 @@ For full functionality and reliability, API keys for Scopus and SerpApi are requ
 
 The Zotero server is a powerful engine that extracts high-quality, standardized metadata from paper URLs. It runs locally in a Docker container.
 
-1.  **Start Docker Desktop**: Make sure the Docker application is running on your machine.
+1.  **Start Docker**: Make sure Docker is running on your machine.
 
 2.  **Download and Run the Server**: In your terminal, run the following command. The first time you run this, it will download the necessary image, which may take a few minutes.
     ```bash
