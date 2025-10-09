@@ -1,48 +1,49 @@
 import logging
-from typing import List
+from typing import List, Tuple, Dict
 from litrev.models import SearchConfig, Paper
 from litrev.search import acl_search, arxiv_search, dblp_search, scholar_search, scopus_search
 
-# A list of all available search functions
 SEARCH_SOURCES = [
     {"name": "ACL Anthology", "func": acl_search.search_acl},
     {"name": "ArXiv", "func": arxiv_search.search_arxiv},
     {"name": "DBLP", "func": dblp_search.search_dblp},
     {"name": "Scopus", "func": scopus_search.search_scopus},
-    {"name": "Google Scholar", "func": scholar_search.search_scholar},
+    {"name": "Google Scholar (SerpApi)", "func": scholar_search.search_scholar},
 ]
 
-def run_search_pipeline(config: SearchConfig, progress_callback=None) -> List[Paper]:
+def run_search_pipeline(config: SearchConfig, progress_callback=None) -> Tuple[List[Paper], List[str], Dict[str, str]]:
     """
-    Takes a SearchConfig object and executes the search across all sources.
-    This is the core, reusable logic for any UI (CLI, Web, etc.).
+    Executes the search across all sources.
+    Returns a tuple containing: (a list of ALL papers including duplicates, errors, a log of final queries).
     """
     all_papers: List[Paper] = []
+    errors: List[str] = []
+    query_log: Dict[str, str] = {}
     log = logging.getLogger(__name__)
     log.info(f"Starting search pipeline with config: {config.model_dump_json(exclude_unset=True)}")
+    if config.sources_to_search:
+        sources_to_run = [s for s in SEARCH_SOURCES if s["name"] in config.sources_to_search]
+    else:
+        sources_to_run = SEARCH_SOURCES
 
-    for i, source in enumerate(SEARCH_SOURCES):
+    for i, source in enumerate(sources_to_run):
         name = source["name"]
         func = source["func"]
         log.info(f"--- Searching {name}... ---")
-        
-        # Update progress if a callback is provided (for Streamlit)
         if progress_callback:
-            progress_callback(i / len(SEARCH_SOURCES), f"Searching {name}...")
-        
+            progress_callback(i / len(sources_to_run), f"Searching {name}...")
         try:
-            results = func(config)
+            results = func(config, query_log=query_log)
             all_papers.extend(results)
             log.info(f"Found {len(results)} papers from {name}.")
         except Exception as e:
-            log.error(f"Failed to search {name}: {e}")
+            error_message = f"Failed to search {name}: {e}"
+            log.error(error_message)
+            errors.append(error_message)
             
-    # Final progress update
     if progress_callback:
         progress_callback(1.0, "Processing final results...")
 
-    # De-duplicate results based on URL or title
-    unique_papers = list({(p.url or p.title.lower()): p for p in all_papers}.values())
-    log.info(f"Total unique papers found: {len(unique_papers)}")
+    log.info(f"Total papers found (with duplicates): {len(all_papers)}")
     
-    return unique_papers
+    return all_papers, errors, query_log

@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List
+from typing import List, Optional, Dict
 import requests
 from tqdm import tqdm
 from litrev.models import SearchConfig, Paper
@@ -19,7 +19,7 @@ MACRO_AREA_MAP = {
 }
 
 @robust_search()
-def search_scopus(config: SearchConfig) -> List[Paper]:
+def search_scopus(config: SearchConfig, query_log: Optional[Dict[str, str]] = None) -> List[Paper]:
     """Searches the Scopus API using a structured AND of ORs query."""
     log = logging.getLogger(__name__)
     
@@ -66,6 +66,9 @@ def search_scopus(config: SearchConfig) -> List[Paper]:
     query = " AND ".join(query_clauses)
     log.info(f"Constructed Scopus query: {query}")
     
+    if query_log is not None:
+        query_log["Scopus"] = query
+    
     params = {
         "query": query,
         "count": config.max_results,
@@ -110,22 +113,3 @@ def search_scopus(config: SearchConfig) -> List[Paper]:
         
     return results
 
-# Overload the robust request helper to accept headers
-def requests.get(url: str, params: dict, headers: dict = None, retries: int = 3, delay: int = 2) -> dict:
-    log = logging.getLogger(__name__)
-    for attempt in range(retries):
-        try:
-            response = requests.get(url, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as e:
-            if 500 <= e.response.status_code < 600:
-                log.warning(f"Server error ({e.response.status_code}). Retrying... (Attempt {attempt + 1}/{retries})")
-                time.sleep(delay)
-            else:
-                log.error(f"Client error ({e.response.status_code}). Details: {e.response.text}")
-                raise e
-        except requests.exceptions.RequestException as e:
-            log.warning(f"Connection error: {e}. Retrying...")
-            time.sleep(delay)
-    raise Exception(f"Failed to fetch data from {url} after {retries} attempts.")

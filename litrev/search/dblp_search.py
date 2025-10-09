@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional, Dict
 import requests
 import json
 from tqdm import tqdm
@@ -7,7 +7,7 @@ from litrev.models import SearchConfig, Paper
 from litrev.utils import robust_search
 
 @robust_search()
-def search_dblp(config: SearchConfig) -> List[Paper]:
+def search_dblp(config: SearchConfig, query_log: Optional[Dict[str, str]] = None) -> List[Paper]:
     """
     Searches DBLP using a correctly structured "AND of ORs" query.
     This version correctly looks up author and venue names for precise querying.
@@ -74,6 +74,10 @@ def search_dblp(config: SearchConfig) -> List[Paper]:
     # --- 2. COMBINE CLAUSES WITH SPACES (DBLP's AND OPERATOR) ---
     query = " ".join(query_clauses)
     log.info(f"Constructed final DBLP query: {query}")
+    
+    if query_log is not None:
+        query_log["DBLP"] = query
+        
     params = {"q": query, "format": "json", "h": config.max_results}
     
     # --- 3. EXECUTE THE FINAL, ROBUST REQUEST ---
@@ -94,11 +98,14 @@ def search_dblp(config: SearchConfig) -> List[Paper]:
         paper_year = int(info["year"]) if info.get("year") else None
 
         if paper_year and config.years:
-            if isinstance(config.years, int) and paper_year != config.years: continue
-            if isinstance(config.years, tuple) and not (config.years[0] <= paper_year <= config.years[1]): continue
+            if isinstance(config.years, int) and paper_year != config.years: 
+                continue
+            if isinstance(config.years, tuple) and not (config.years[0] <= paper_year <= config.years[1]): 
+                continue
         
         title_lower = info.get('title', '').lower()
-        if config.exclusion_keywords and any(ex_k.lower() in title_lower for ex_k in config.exclusion_keywords): continue
+        if config.exclusion_keywords and any(ex_k.lower() in title_lower for ex_k in config.exclusion_keywords): 
+            continue
         
         authors_data = info.get('authors', {}).get('author', [])
         authors = [a.get('text', '') for a in ([authors_data] if isinstance(authors_data, dict) else authors_data)]

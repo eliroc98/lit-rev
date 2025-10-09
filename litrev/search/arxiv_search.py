@@ -1,6 +1,6 @@
 import logging
 import arxiv
-from typing import List
+from typing import List, Optional, Dict
 from tqdm import tqdm
 from litrev.models import SearchConfig, Paper
 from litrev.utils import robust_search
@@ -18,7 +18,7 @@ MACRO_AREA_MAP = {
 }
 
 @robust_search()
-def search_arxiv(config: SearchConfig) -> List[Paper]:
+def search_arxiv(config: SearchConfig, query_log: Optional[Dict[str, str]] = None) -> List[Paper]:
     """Searches arXiv using a structured AND of ORs query."""
     log = logging.getLogger(__name__)
     query_clauses = []
@@ -48,6 +48,8 @@ def search_arxiv(config: SearchConfig) -> List[Paper]:
     # Final Query: (Clause 1) AND (Clause 2) AND (Clause 3)
     query = " AND ".join(query_clauses)
     log.info(f"Constructed arXiv query: {query}")
+    if query_log is not None:
+        query_log["ArXiv"] = query
 
     search = arxiv.Search(query=query, max_results=config.max_results)
     

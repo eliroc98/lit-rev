@@ -1,75 +1,100 @@
+import os
 import logging
-from typing import List
-from itertools import islice
-from scholarly import scholarly, ProxyGenerator
+from typing import List, Optional, Dict
+import json
+import requests
 from tqdm import tqdm
 from litrev.models import SearchConfig, Paper
-from litrev.utils import robust_search
+from litrev.utils import robust_search, extract_year
 
 @robust_search()
-def search_scholar(config: SearchConfig) -> List[Paper]:
-    """Searches Google Scholar with a relevance ranking system."""
+def search_scholar(config: SearchConfig, query_log: Optional[Dict[str, str]] = None) -> List[Paper]:
+    """
+    Searches Google Scholar using the SerpApi backend for reliability.
+    Constructs a structured "AND of ORs" query.
+    """
     log = logging.getLogger(__name__)
-    pg = ProxyGenerator()
-    if pg.FreeProxies():
-        scholarly.use_proxy(pg)
-        log.info("Successfully configured scholarly to use free proxies.")
-    else:
-        log.warning("Could not fetch free proxies. Proceeding with direct connection.")
 
+    # --- 1. API KEY CHECK ---
+    api_key = os.getenv("SERPAPI_API_KEY")
+    if not api_key:
+        log.error("SERPAPI_API_KEY environment variable not set. Skipping Google Scholar search.")
+        raise ValueError("SerpApi API key not found.") # Raise error to be caught by decorator
+
+    # --- 2. QUERY CONSTRUCTION ---
     query_clauses = []
-
-    # Clause 1: Keywords
+    # Google Scholar's query syntax is simpler. A space acts as AND.
     if config.inclusion_keywords:
         query_clauses.append(f"({' OR '.join(config.inclusion_keywords)})")
-    
-    # Clause 2: Authors
     if config.authors:
-        # Scholar is better with author names as simple keywords
         query_clauses.append(f"({' OR '.join(config.authors)})")
-    
-    # Clause 3: Venues
     if config.venues:
         query_clauses.append(f"({' OR '.join(config.venues)})")
-
-    # Clause 4: Macro Areas
-    if config.macro_areas:
-        query_clauses.append(f"({' OR '.join(config.macro_areas)})")
 
     if not query_clauses:
         log.warning("Google Scholar search requires keywords, authors, venues, or macro areas.")
         return []
 
-    # Final Query: (Clause 1) (Clause 2) ... (space implies AND)
     query = " ".join(query_clauses)
-    log.info(f"Constructed Google Scholar query: {query}")
-    year_low, year_high = None, None
-    if config.years:
-        if isinstance(config.years, int): year_low = year_high = config.years
-        elif isinstance(config.years, tuple): year_low, year_high = config.years
-
-    log.info(f"Searching Google Scholar with query: '{query}'")
-
-    search_results = scholarly.search_pubs(query, year_low=year_low, year_high=year_high)
-    results_iterator = islice(search_results, config.max_results)
-
-    results = []
-    for pub in tqdm(results_iterator, desc="Fetching Scholar results"):
-        bib = pub.get('bib', {})
-        title = bib.get('title', 'No Title')
-        abstract = bib.get('abstract', '')
-        full_text_lower = (title + " " + abstract).lower()
-        if config.exclusion_keywords and any(ex_k.lower() in full_text_lower for ex_k in config.exclusion_keywords): 
-            continue
-
-        paper_authors = bib.get('author', [])
-        if isinstance(paper_authors, str): paper_authors = [name.strip() for name in paper_authors.split(' and ')]
+    log.info(f"Constructed Google Scholar (SerpApi) query: {query}")
+    if query_log is not None:
+        query_log["Google Scholar (SerpApi)"] = query
         
-        results.append(Paper(
-            title=title, authors=paper_authors,
-            year=int(bib['pub_year']) if bib.get('pub_year') and str(bib['pub_year']).isdigit() else None,
-            venue=bib.get('venue'), url=pub.get('pub_url') or pub.get('eprint_url'),
-            summary=abstract, source="Google Scholar"
-        ))
+    # --- 3. PAGINATION AND API CALLS ---
+    all_results = []
+    offset = 0
+    num_per_page = 20
+    
+    # Use tqdm for the overall progress towards the user's max_results goal
+    with tqdm(total=config.max_results, desc="Fetching Scholar results") as pbar:
+        while len(all_results) < config.max_results:
+            params = {
+                "engine": "google_scholar",
+                "api_key": api_key,
+                "q": query,
+                "num": num_per_page,
+                "start": offset,
+            }
 
-    return results
+            # Add year filtering to the API parameters
+            if config.years:
+                if isinstance(config.years, int):
+                    params["as_ylo"] = params["as_yhi"] = config.years
+                elif isinstance(config.years, tuple):
+                    params["as_ylo"], params["as_yhi"] = config.years
+
+            search = requests.get("https://serpapi.com/search?engine=google_scholar", params)
+            data = json.loads(search.text)
+            
+            organic_results = data.get("organic_results", [])
+            if not organic_results:
+                break # No more results found
+
+            for item in organic_results:
+                # --- 4. DATA MAPPING AND FILTERING ---
+                title = item.get('title', 'No Title')
+                pub_info = item.get('publication_info', {})
+                abstract = item.get('snippet', '')
+
+                full_text_lower = (title + " " + abstract).lower()
+                if config.exclusion_keywords and any(ex_k.lower() in full_text_lower for ex_k in config.exclusion_keywords): 
+                    continue
+                
+                paper_obj = Paper(
+                    title=title,
+                    authors=[author.get('name', '') for author in pub_info.get('authors', [])],
+                    year=extract_year(pub_info.get('summary', '')),
+                    venue=None,
+                    url=item.get('link'),
+                    summary=abstract,
+                    source="Google Scholar (SerpApi)"
+                )
+                all_results.append(paper_obj)
+                pbar.update(1) # Increment progress bar for each paper processed
+                
+                if len(all_results) >= config.max_results:
+                    break
+
+            offset += num_per_page
+
+    return all_results[:config.max_results]
