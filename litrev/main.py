@@ -5,10 +5,10 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Union, Tuple, Dict
 from dotenv import load_dotenv
-from lit_rev.models import SearchConfig, Paper, ZoteroPaper
-from lit_rev.engine import run_search_pipeline, SEARCH_SOURCES
-from lit_rev.utils import setup_logging, group_papers_by_title, auto_resolve_conflict
-from lit_rev.zotero_enrichment import enrich_papers_with_zotero
+from litrev.models import SearchConfig, Paper, ZoteroPaper
+from litrev.engine import run_search_pipeline, SEARCH_SOURCES
+from litrev.utils import setup_logging, group_papers_by_title, auto_resolve_conflict
+from litrev.zotero_enrichment import enrich_papers_with_zotero
 
 # --- SETUP ---
 load_dotenv()
@@ -158,7 +158,7 @@ def run_cli_workflow(config: SearchConfig, preference_order: List[str]):
 # --- CLI COMMANDS ---
 @app.command()
 def search(
-    include: List[str] = typer.Option(None, "--include", "-i", help="Keywords to include."),
+    keyword_group: List[str] = typer.Option(None, "--keyword-group", "-kg", help="An AND-group of keywords (comma-separated). Repeat for OR logic."),
     exclude: List[str] = typer.Option(None, "--exclude", "-e", help="Keywords to exclude."),
     authors: List[str] = typer.Option(None, "--author", "-a", help="Author names."),
     venue: List[str] = typer.Option(None, "--venue", "-v", help="Venues (e.g., 'ICLR')."),
@@ -171,9 +171,13 @@ def search(
     max_results: int = typer.Option(250, "-n", help="Max results per source."),
 ):
     """Search for papers using command-line arguments."""
+    inclusion_keywords = []
+    if keyword_group:
+        for group_str in keyword_group:
+            inclusion_keywords.append([k.strip() for k in group_str.split(',') if k.strip()])
     years_config = year if year else (start_year, end_year) if start_year and end_year else None
     config = SearchConfig(
-        inclusion_keywords=include or [], exclusion_keywords=exclude or [],
+        inclusion_keywords=inclusion_keywords or [], exclusion_keywords=exclude or [],
         authors=[a.strip().title() for a in (authors or [])], venues=venue or [],
         macro_areas=macro_area or [], sources_to_search=source or [],
         years=years_config, max_results=max_results
@@ -186,7 +190,14 @@ def interactive():
     print("--- 📚 Welcome to the Interactive Literature Search Wizard! ---")
     print("Please answer the following questions. Press Enter to skip.")
     
-    include_str = typer.prompt("\n➡️ Keywords to include (comma-separated)", default="")
+    typer.echo("\n--- Inclusion Keywords ---")
+    typer.echo("Enter groups of AND-keywords. Multiple groups will be OR'd together.")
+    inclusion_keywords = []
+    while True:
+        group_str = typer.prompt(f"➡️ Add keyword group {len(inclusion_keywords) + 1} (comma-separated), or press Enter to finish", default="")
+        if not group_str:
+            break
+        inclusion_keywords.append([k.strip() for k in group_str.split(',') if k.strip()])
     exclude_str = typer.prompt("➡️ Keywords to exclude (comma-separated)", default="")
     authors_str = typer.prompt("➡️ Authors (name and surname, comma-separated)", default="")
     venue_str = typer.prompt("➡️ Venues (comma-separated)", default="")
@@ -216,7 +227,7 @@ def interactive():
     max_results: int = typer.prompt("\n➡️ Max results to return?", type=int, default=250)
 
     config = SearchConfig(
-        inclusion_keywords=[k.strip() for k in include_str.split(',') if k.strip()],
+        inclusion_keywords=inclusion_keywords or [],
         exclusion_keywords=[k.strip() for k in exclude_str.split(',') if k.strip()],
         authors=[a.strip().title() for a in authors_str.split(',') if a.strip()],
         venues=[v.strip() for v in venue_str.split(',') if v.strip()],

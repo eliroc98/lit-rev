@@ -1,8 +1,8 @@
+from datetime import datetime
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 from dotenv import load_dotenv
-from litrev.models import SearchConfig, Paper, ZoteroPaper
+from litrev.models import SearchConfig, ZoteroPaper
 from litrev.engine import run_search_pipeline, SEARCH_SOURCES
 from litrev.utils import group_papers_by_title, auto_resolve_conflict
 from litrev.zotero_enrichment import enrich_papers_with_zotero
@@ -29,6 +29,9 @@ AVAILABLE_MACRO_AREAS = sorted([
 ])
 AVAILABLE_SOURCES = [source['name'] for source in SEARCH_SOURCES]
 
+if 'keyword_groups' not in st.session_state:
+    st.session_state.keyword_groups = []
+
 # --- Search Form in the Sidebar ---
 with st.sidebar:
     st.header("Search Parameters")
@@ -45,7 +48,25 @@ with st.sidebar:
 
     # --- 2. Query Definition ---
     st.subheader("2. Define Query")
-    include_str = st.text_input("Inclusion Keywords (comma-separated)", placeholder="e.g., large language model, reasoning")
+    st.markdown("**Inclusion Keywords**")
+    st.info("Each group is an AND-set. Multiple groups are OR'd together.")
+    with st.form("new_keyword_group_form"):
+        new_group_str = st.text_input("Add a new keyword group (comma-separated AND terms)", placeholder="e.g., cultural bias, large language models")
+        if st.form_submit_button("Add Group"):
+            if new_group_str:
+                new_group = [k.strip() for k in new_group_str.split(',') if k.strip()]
+                st.session_state.keyword_groups.append(new_group)
+                st.rerun() # Rerun to update the UI
+    
+    # Display current groups with delete buttons
+    for i, group in enumerate(st.session_state.keyword_groups):
+        cols = st.columns([0.85, 0.15])
+        with cols[0]:
+            st.info(f"{', '.join(group)}")
+        with cols[1]:
+            if st.button("❌", key=f"delete_group_{i}", help=f"Remove this group"):
+                st.session_state.keyword_groups.pop(i)
+                st.rerun() # Rerun to update the UI
     exclude_str = st.text_input("Exclusion Keywords (comma-separated)", placeholder="e.g., vision, medical")
     authors_str = st.text_input("Authors (comma-separated)", placeholder="e.g., Yann LeCun, Geoffrey Hinton")
     venue_str = st.text_input("Venues (comma-separated)", placeholder="e.g., NeurIPS, ICLR, ACL")
@@ -94,8 +115,11 @@ if search_button:
     
     preferred_sources = [source for source, priority in sorted(source_priorities.items(), key=lambda item: item[1])]
 
+    inclusion_keywords = []
+    if st.session_state.keyword_groups:
+        inclusion_keywords = [group for group in st.session_state.keyword_groups if group]
     config = SearchConfig(
-        inclusion_keywords=[k.strip() for k in include_str.split(',') if k.strip()],
+        inclusion_keywords=inclusion_keywords,
         exclusion_keywords=[k.strip() for k in exclude_str.split(',') if k.strip()],
         authors=[a.strip() for a in authors_str.split(',') if a.strip()],
         venues=[v.strip() for v in venue_str.split(',') if v.strip()],
@@ -176,12 +200,28 @@ if st.session_state.get('conflicts_resolved'):
     st.header(f"Final Results ({len(results)} unique papers)")
 
     if results and not is_enriched:
-        if st.button("✨ Enrich Results with Zotero", help="Fetch standardized metadata using a local Zotero Translation Server."):
-            with st.spinner("Enriching papers... This may take a while."):
-                enriched_results = enrich_papers_with_zotero(results)
+        st.markdown("---")
+        if st.button("✨ Enrich Results with Zotero", help="Uses the Zotero translation server to fetch standardized metadata for each paper."):
+            
+            # 1. Create a progress bar placeholder
+            st_progress_bar = st.progress(0, text="Starting enrichment...")
+            
+            # 2. Define the callback function that updates the bar
+            def update_st_progress(fraction, text):
+                st_progress_bar.progress(fraction, text=text)
+
+            # Use a spinner for the overall process
+            with st.spinner("Enriching papers with Zotero... This may take a while."):
+                # 3. Pass the callback to the enrichment function
+                enriched_results = enrich_papers_with_zotero(results, progress_callback=update_st_progress)
+                
+                # Update session state
                 st.session_state.final_results = enriched_results
                 st.session_state.is_enriched = True
-                st.rerun()
+            
+            # 4. Remove the progress bar and rerun to display the final results
+            st_progress_bar.empty()
+            st.rerun()
     st.markdown("---")
 
     if not results:

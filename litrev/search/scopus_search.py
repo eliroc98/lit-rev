@@ -22,61 +22,64 @@ MACRO_AREA_MAP = {
 def search_scopus(config: SearchConfig, query_log: Optional[Dict[str, str]] = None) -> List[Paper]:
     """Searches the Scopus API using a structured AND of ORs query."""
     log = logging.getLogger(__name__)
-    
-    # --- API Key Check ---
     api_key = os.getenv("SCOPUS_API_KEY")
     if not api_key:
         log.error("SCOPUS_API_KEY environment variable not set. Skipping Scopus search.")
         return []
 
-    headers = {
-        "X-ELS-APIKey": api_key,
-        "Accept": "application/json"
-    }
+    headers = {"X-ELS-APIKey": api_key, "Accept": "application/json"}
     base_url = "https://api.elsevier.com/content/search/scopus"
     
     query_clauses = []
 
-    # --- Query Construction (Scopus Syntax) ---
+    # Clause 1: Inclusion Keywords - TITLE-ABS-KEY((k1a AND k1b) OR (k2a AND k2b))
     if config.inclusion_keywords:
-        # TITLE-ABS-KEY searches in Title, Abstract, and Keywords
-        keyword_part = " OR ".join(config.inclusion_keywords)
+        group_clauses = []
+        for group in config.inclusion_keywords:
+            and_terms = " AND ".join([f'"{term}"' for term in group])
+            group_clauses.append(f"({and_terms})")
+        keyword_part = " OR ".join(group_clauses)
         query_clauses.append(f"TITLE-ABS-KEY({keyword_part})")
 
+    # Other clauses are simple ORs
     if config.authors:
-        # AUTH() searches for author names
-        author_part = " OR ".join([f'"{a}"' for a in config.authors])
+        # First, create the list of quoted authors
+        quoted_authors = [f'"{a}"' for a in config.authors]
+        # Then, join them and build the final clause
+        author_part = " OR ".join(quoted_authors)
         query_clauses.append(f"AUTH({author_part})")
         
+    # Clause 3: Venues
     if config.venues:
-        # SRCTITLE() searches for the journal/conference name
-        venue_part = " OR ".join([f'"{v}"' for v in config.venues])
+        # First, create the list of quoted venues
+        quoted_venues = [f'"{v}"' for v in config.venues]
+        # Then, join them and build the final clause
+        venue_part = " OR ".join(quoted_venues)
         query_clauses.append(f"SRCTITLE({venue_part})")
-        
     if config.macro_areas:
         area_codes = [MACRO_AREA_MAP.get(area.lower(), area) for area in config.macro_areas]
-        area_part = " OR ".join(area_codes)
-        query_clauses.append(f"SUBJAREA({area_part})")
+        query_clauses.append(f"SUBJAREA({ ' OR '.join(area_codes) })")
 
     if not query_clauses:
-        log.warning("Scopus search requires keywords, authors, venues, or macro areas.")
+        log.warning("Scopus search requires criteria.")
         return []
 
-    # --- Final Query and API Call ---
+    # Final Query: Join positive clauses with AND
     query = " AND ".join(query_clauses)
+
+    # Add exclusion clause at the end
+    if config.exclusion_keywords:
+        exclusion_part = " OR ".join(config.exclusion_keywords)
+        query += f" AND NOT ({exclusion_part})"
+
     log.info(f"Constructed Scopus query: {query}")
-    
     if query_log is not None:
         query_log["Scopus"] = query
     
-    params = {
-        "query": query,
-        "count": config.max_results,
-        "view": "COMPLETE" # Required to get the abstract
-    }
+    params = {"query": query, "count": config.max_results, "view": "COMPLETE"}
 
     try:
-        data = requests.get(base_url, params=params, headers=headers)
+        data = requests.post(base_url, params=params, headers=headers)
     except Exception as e:
         log.error(f"Scopus search failed after retries: {e}")
         return []

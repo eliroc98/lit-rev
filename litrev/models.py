@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class SearchConfig(BaseModel):
     """Unified configuration for all paper searches."""
-    inclusion_keywords: List[str] = Field(default_factory=list)
+    inclusion_keywords: List[List[str]] = Field(default_factory=list)
     exclusion_keywords: List[str] = Field(default_factory=list)
     authors: List[str] = Field(default_factory=list)
     years: Optional[Union[int, Tuple[int, int]]] = None

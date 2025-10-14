@@ -9,32 +9,37 @@ from litrev.utils import robust_search, extract_year
 
 @robust_search()
 def search_scholar(config: SearchConfig, query_log: Optional[Dict[str, str]] = None) -> List[Paper]:
-    """
-    Searches Google Scholar using the SerpApi backend for reliability.
-    Constructs a structured "AND of ORs" query.
-    """
+    """Searches Google Scholar via SerpApi using a structured AND of ORs query."""
     log = logging.getLogger(__name__)
-
-    # --- 1. API KEY CHECK ---
     api_key = os.getenv("SERPAPI_API_KEY")
     if not api_key:
-        log.error("SERPAPI_API_KEY environment variable not set. Skipping Google Scholar search.")
-        raise ValueError("SerpApi API key not found.") # Raise error to be caught by decorator
+        raise ValueError("SERPAPI_API_KEY environment variable not set.")
 
-    # --- 2. QUERY CONSTRUCTION ---
     query_clauses = []
-    # Google Scholar's query syntax is simpler. A space acts as AND.
+
+    # Clause 1: Inclusion Keywords - (("k1a" "k1b") OR ("k2a" "k2b"))
     if config.inclusion_keywords:
-        query_clauses.append(f"({' OR '.join(config.inclusion_keywords)})")
+        group_clauses = []
+        for group in config.inclusion_keywords:
+            # Google's AND is a space. Quotes are for phrases.
+            and_terms = " ".join([f'"{term}"' for term in group])
+            group_clauses.append(f"({and_terms})")
+        keyword_part = " OR ".join(group_clauses)
+        query_clauses.append(f"({keyword_part})")
+
+    # Other clauses are simple ORs
     if config.authors:
         query_clauses.append(f"({' OR '.join(config.authors)})")
     if config.venues:
         query_clauses.append(f"({' OR '.join(config.venues)})")
+    if config.macro_areas:
+        query_clauses.append(f"({' OR '.join(config.macro_areas)})")
 
     if not query_clauses:
-        log.warning("Google Scholar search requires keywords, authors, venues, or macro areas.")
+        log.warning("Google Scholar search requires criteria.")
         return []
 
+    # Final Query: Join clauses with space (Google's AND)
     query = " ".join(query_clauses)
     log.info(f"Constructed Google Scholar (SerpApi) query: {query}")
     if query_log is not None:

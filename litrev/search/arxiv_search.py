@@ -43,8 +43,8 @@ def search_arxiv(config: SearchConfig, query_log: Optional[Dict[str, str]] = Non
         for group in config.inclusion_keywords:
             print(group)
             # Each term is prefixed with "all:", and terms are joined with " AND "
-            terms_in_group = [term.strip() for term in group.split(",")]
-            and_terms = " AND ".join([f'all:"{term}"' for term in terms_in_group])
+            #terms_in_group = [term.strip() for term in group.split(",")]
+            and_terms = " AND ".join([f'all:"{term}"' for term in group])
             #and_terms = "all:"+",".join([f'"{term}"' for term in terms_in_group])
             group_clauses.append(f"({and_terms})")
         keyword_part = " OR ".join(group_clauses)

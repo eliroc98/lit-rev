@@ -9,75 +9,42 @@ from litrev.utils import robust_search
 @robust_search()
 def search_dblp(config: SearchConfig, query_log: Optional[Dict[str, str]] = None) -> List[Paper]:
     """
-    Searches DBLP using a correctly structured "AND of ORs" query.
-    This version correctly looks up author and venue names for precise querying.
+    Searches DBLP using a structured "AND of ORs" query, mirroring the ArXiv logic.
     """
     log = logging.getLogger(__name__)
     query_clauses = []
 
-    # --- 1. CONSTRUCT QUERY CLAUSES FOR EACH CATEGORY ---
-
-    # Clause 1: Keywords (simple OR)
+    # Clause 1: Inclusion Keywords - ((k1a k1b)|(k2a k2b))
     if config.inclusion_keywords:
-        keyword_part = "|".join(config.inclusion_keywords)
-        query_clauses.append(f"{keyword_part}")
-    
-    # Clause 2: Authors (requires lookups)
-    if config.authors:
-        formatted_authors = []
-        log.info("Looking up DBLP author names...")
-        for author in tqdm(config.authors, desc="Querying Authors"):
-            params = {"q": author, "format": "json", "h": 1}
-            try:
-                data = requests.get("https://dblp.org/search/author/api", params=params)
-                data = json.loads(data.text.replace("\\r\\n", ""))
-                # Check for a valid, non-empty hit list
-                if data and data.get('result', {}).get('hits', {}).get('hit'):
-                    # Format: author:Firstname_Lastname:
-                    dblp_name = data['result']['hits']['hit'][0]['info']['author'].replace(" ", "_")
-                    formatted_authors.append(f"author:{dblp_name}:")
-                else:
-                    log.warning(f"Could not find a DBLP author match for '{author}'. Skipping.")
-            except Exception as e:
-                log.error(f"Failed to look up author '{author}': {e}. Skipping.")
-        
-        if formatted_authors:
-            author_part = "|".join(formatted_authors)
-            query_clauses.append(f"{author_part}")
+        group_clauses = []
+        for group in config.inclusion_keywords:
+            # Join the terms within a group with spaces (AND)
+            and_terms = " ".join([f'"{term}"' for term in group])
+            group_clauses.append(f"({and_terms})")
+        # Join the AND-groups with a pipe (OR)
+        keyword_part = "|".join(group_clauses)
+        query_clauses.append(f"({keyword_part})")
 
-    # Clause 3: Venues (requires lookups)
+    # Clause 2: Authors (OR'd)
+    if config.authors:
+        author_part = "|".join([f'author:"{a}"' for a in config.authors])
+        query_clauses.append(f"({author_part})")
+
+    # Clause 3: Venues (OR'd)
     if config.venues:
-        formatted_venues = []
-        log.info("Looking up DBLP venue acronyms...")
-        for venue in tqdm(config.venues, desc="Querying Venues"):
-            params = {"q": venue, "format": "json", "h": 1}
-            try:
-                data = requests.get("https://dblp.org/search/venue/api", params=params)
-                data = json.loads(data.text.replace("\\r\\n", ""))
-                if data and data.get('result', {}).get('hits', {}).get('hit'):
-                    # Format: streamid:conf/ACRONYM:
-                    acronym = data['result']['hits']['hit'][0]['info']['acronym'].lower()
-                    formatted_venues.append(f"streamid:conf/{acronym}:")
-                else:
-                    log.warning(f"Could not find a DBLP venue match for '{venue}'. Skipping.")
-            except Exception as e:
-                log.error(f"Failed to look up venue '{venue}': {e}. Skipping.")
-        
-        if formatted_venues:
-            venue_part = "|".join(formatted_venues)
-            query_clauses.append(f"{venue_part}")
+        venue_part = "|".join([f'venue:"{v}"' for v in config.venues])
+        query_clauses.append(f"({venue_part})")
 
     if not query_clauses:
-        log.warning("DBLP search requires keywords, authors, or venues, and at least one must be valid.")
+        log.warning("DBLP search requires keywords, authors, or venues.")
         return []
 
-    # --- 2. COMBINE CLAUSES WITH SPACES (DBLP's AND OPERATOR) ---
+    # Final Query: Join clauses with space (DBLP's AND)
     query = " ".join(query_clauses)
-    log.info(f"Constructed final DBLP query: {query}")
-    
+    log.info(f"Constructed DBLP API query: {query}")
     if query_log is not None:
         query_log["DBLP"] = query
-        
+
     params = {"q": query, "format": "json", "h": config.max_results}
     
     # --- 3. EXECUTE THE FINAL, ROBUST REQUEST ---
@@ -95,7 +62,12 @@ def search_dblp(config: SearchConfig, query_log: Optional[Dict[str, str]] = None
     results = []
     for item in tqdm(hits, desc="Processing DBLP results"):
         info = item.get("info", {})
-        paper_year = int(info["year"]) if info.get("year") else None
+        year_val = info.get("year")
+        paper_year = None
+        if isinstance(year_val, list):
+            paper_year = int(year_val[0]) if year_val and year_val[0].isdigit() else None
+        elif isinstance(year_val, str) and year_val.isdigit():
+            paper_year = int(year_val)
 
         if paper_year and config.years:
             if isinstance(config.years, int) and paper_year != config.years: 
