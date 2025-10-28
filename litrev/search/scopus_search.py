@@ -84,6 +84,10 @@ def search_scopus(config: SearchConfig, query_log: Optional[Dict[str, str]] = No
         log.error(f"Scopus search failed after retries: {e}")
         return []
 
+    if data.status_code != 200:
+        log.error(f"Scopus API error {data.status_code}: {data.text}")
+        return []
+    
     entries = data.get("search-results", {}).get("entry", [])
     if not entries:
         return []
